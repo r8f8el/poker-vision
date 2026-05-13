@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { analyzeTableWithGemini, TableState, RateLimitError } from "@/lib/geminiVision";
-import { captureFrameAsBase64 } from "@/lib/geminiVision";
+import { analyzeTableWithVision, TableState, RateLimitError } from "@/lib/visionApi";
+import { captureFrameAsBase64 } from "@/lib/visionApi";
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const VISION_API_KEY = import.meta.env.VITE_GROQ_API_KEY || "";
 const POLL_INTERVAL = 2000;      // verifica movimento a cada 2s (sem chamar API)
 const MIN_SCAN_GAP = 15000;      // mínimo 15s entre chamadas à API
 const MOTION_THRESHOLD = 8;      // sensibilidade de detecção de movimento (0-100)
@@ -113,7 +113,7 @@ export function useAutoScan(): UseAutoScanResult {
   const runApiScan = useCallback(async (video: HTMLVideoElement) => {
     if (isProcessingRef.current) return;
     if (Date.now() < blockedUntilRef.current) return;
-    if (!GEMINI_API_KEY) { setError("API Key não configurada."); return; }
+    if (!VISION_API_KEY) { setError("API Key da Groq não configurada."); return; }
 
     const now = Date.now();
     if (now - lastApiCallRef.current < MIN_SCAN_GAP) return; // respeita gap mínimo
@@ -127,7 +127,7 @@ export function useAutoScan(): UseAutoScanResult {
       const base64 = captureFrameAsBase64(video);
       if (!base64) return;
 
-      const result = await analyzeTableWithGemini(base64, GEMINI_API_KEY);
+      const result = await analyzeTableWithVision(base64, VISION_API_KEY);
       if (result.error) { setError(result.error); return; }
       if (!result.tableState || result.tableState.confidence < 20) return;
 

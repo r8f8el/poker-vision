@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
-import { captureFrameAsBase64, analyzeTableWithGemini, GeminiDetectedCard } from "@/lib/geminiVision";
+import { captureFrameAsBase64, analyzeTableWithVision, TableState, GeminiDetectedCard } from "@/lib/visionApi";
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || "";
 
 export interface UseGeminiDetectionResult {
   cards: GeminiDetectedCard[];
@@ -26,7 +26,7 @@ export function useGeminiDetection(): UseGeminiDetectionResult {
     try {
       const base64 = captureFrameAsBase64(video);
       if (!base64) { setError("Não foi possível capturar o frame."); return; }
-      const result = await analyzeTableWithGemini(base64, GEMINI_API_KEY);
+      const result = await analyzeTableWithVision(base64, GROQ_API_KEY);
       if (result.error) { setError(result.error); return; }
       setCards(result.cards);
       if (result.cards.length === 0) setError("Nenhuma carta detectada. Tente novamente.");

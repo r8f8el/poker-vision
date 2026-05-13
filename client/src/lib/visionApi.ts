@@ -92,7 +92,7 @@ function parseCards(arr: any[]): string[] {
 /**
  * Analisa a mesa completa de poker via Gemini Vision
  */
-export async function analyzeTableWithGemini(
+export async function analyzeTableWithVision(
   imageBase64: string,
   apiKey: string
 ): Promise<GeminiDetectionResult> {
@@ -132,24 +132,27 @@ Regras:
 Se não houver jogo de poker visível, retorne: {"confidence": 0, "holeCards": [], "board": [], "pot": 0, "toCall": 0, "myStack": 0, "myPosition": "unknown", "myTurn": false, "activePlayers": 0, "lastActions": [], "street": "unknown", "platform": "unknown"}`;
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { inline_data: { mime_type: "image/jpeg", data: imageBase64 } },
-                { text: prompt },
-              ],
-            },
-          ],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
-        }),
-      }
-    );
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "llama-3.2-90b-vision-preview",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
+            ]
+          }
+        ],
+        temperature: 0.1
+      })
+    });
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -157,11 +160,12 @@ Se não houver jogo de poker visível, retorne: {"confidence": 0, "holeCards": [
         const waitSec = retryAfter ? parseInt(retryAfter) : 30;
         throw new RateLimitError(`Limite de requisições atingido. Aguarde ${waitSec}s.`, waitSec);
       }
-      throw new Error(`API error: ${response.status}`);
+      const errText = await response.text();
+      throw new Error(`API error: ${response.status} - ${errText}`);
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const text = data.choices[0]?.message?.content || "{}";
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { cards: [], tableState: null, rawResponse: text };
