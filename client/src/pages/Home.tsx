@@ -31,7 +31,7 @@ const REC_STYLE: Record<string, { gradient: string; textColor: string; badge: st
 
 export default function Home() {
   const { videoRef, ready: camReady, error: camError } = useCamera();
-  const { tableState, isScanning, isAutoMode, error: scanError, rateLimitCountdown, scanCount, lastScanTime, toggleAutoMode, manualScan, reset } = useAutoScan();
+  const { tableState, isScanning, isAutoMode, error: scanError, rateLimitCountdown, scanCount, lastScanTime, motionDetected, toggleAutoMode, manualScan, reset } = useAutoScan();
 
   // Cartas manuais (override do auto-scan)
   const [holeCards, setHoleCards] = useState<string[]>(["", ""]);
@@ -140,8 +140,13 @@ export default function Home() {
             <span className="text-xl">♠️</span>
             <span className="text-white font-bold tracking-tight">PokerVision</span>
             {isAutoMode && (
-              <span className="flex items-center gap-1 bg-green-500/20 border border-green-500/30 rounded-full px-2 py-0.5 text-green-400 text-xs">
-                <Radio className="w-3 h-3 animate-pulse" /> AO VIVO
+              <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-all
+                ${motionDetected
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                  : 'bg-green-500/20 border-green-500/30 text-green-400'
+                }`}>
+                <Radio className="w-3 h-3 animate-pulse" />
+                {motionDetected ? 'Movimento!' : 'AO VIVO'}
               </span>
             )}
           </div>
