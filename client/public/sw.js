@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pokervision-v1';
+const CACHE_NAME = 'pokervision-cache-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
