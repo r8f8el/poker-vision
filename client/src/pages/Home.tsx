@@ -31,7 +31,7 @@ const REC_STYLE: Record<string, { gradient: string; textColor: string; badge: st
 
 export default function Home() {
   const { videoRef, ready: camReady, error: camError } = useCamera();
-  const { tableState, isScanning, isAutoMode, error: scanError, scanCount, lastScanTime, toggleAutoMode, manualScan, reset } = useAutoScan();
+  const { tableState, isScanning, isAutoMode, error: scanError, rateLimitCountdown, scanCount, lastScanTime, toggleAutoMode, manualScan, reset } = useAutoScan();
 
   // Cartas manuais (override do auto-scan)
   const [holeCards, setHoleCards] = useState<string[]>(["", ""]);
@@ -245,9 +245,12 @@ export default function Home() {
             {/* Auto-scan toggle */}
             <button
               onClick={handleToggleAuto}
+              disabled={rateLimitCountdown > 0}
               className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm transition-all active:scale-95
                 ${isAutoMode
                   ? "bg-green-600 text-white shadow-lg shadow-green-500/25"
+                  : rateLimitCountdown > 0
+                  ? "bg-slate-800 text-slate-500 cursor-not-allowed"
                   : "bg-slate-700 text-slate-200 hover:bg-slate-600"
                 }`}
             >
@@ -260,15 +263,17 @@ export default function Home() {
             {/* Scan manual */}
             <button
               onClick={handleManualScan}
-              disabled={isScanning}
+              disabled={isScanning || rateLimitCountdown > 0}
               className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm transition-all active:scale-95
-                ${isScanning
+                ${isScanning || rateLimitCountdown > 0
                   ? "bg-slate-800 text-slate-500 cursor-not-allowed"
                   : "bg-blue-600 text-white shadow-lg shadow-blue-500/25 hover:bg-blue-500"
                 }`}
             >
               {isScanning
                 ? <><div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /> Analisando</>
+                : rateLimitCountdown > 0
+                ? <><span className="text-base">⏳</span> Aguarde {rateLimitCountdown}s</>
                 : <><Scan className="w-4 h-4" /> Escanear</>
               }
             </button>

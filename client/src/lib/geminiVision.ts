@@ -3,6 +3,15 @@
  * Analisa a mesa completa de poker a partir de um frame da câmera
  */
 
+export class RateLimitError extends Error {
+  waitSeconds: number;
+  constructor(message: string, waitSeconds: number) {
+    super(message);
+    this.name = "RateLimitError";
+    this.waitSeconds = waitSeconds;
+  }
+}
+
 export interface TableState {
   holeCards: string[];        // ["As", "Kh"]
   board: string[];            // ["Qs", "Js", "Ts"]
@@ -142,7 +151,14 @@ Se não houver jogo de poker visível, retorne: {"confidence": 0, "holeCards": [
       }
     );
 
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = response.headers.get("Retry-After");
+        const waitSec = retryAfter ? parseInt(retryAfter) : 30;
+        throw new RateLimitError(`Limite de requisições atingido. Aguarde ${waitSec}s.`, waitSec);
+      }
+      throw new Error(`API error: ${response.status}`);
+    }
 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
