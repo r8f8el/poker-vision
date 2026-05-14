@@ -17,8 +17,8 @@ export function useGeminiDetection(): UseGeminiDetectionResult {
   const [error, setError] = useState<string | null>(null);
 
   const detect = useCallback(async (video: HTMLVideoElement) => {
-    if (!GEMINI_API_KEY) {
-      setError("API Key do Gemini não configurada. Crie o arquivo .env com VITE_GEMINI_API_KEY.");
+    if (!GROQ_API_KEY) {
+      setError("API Key da Groq não configurada. Crie o arquivo .env com VITE_GROQ_API_KEY.");
       return;
     }
     setIsDetecting(true);

@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { analyzeHand, HandAnalysis, isValidCard } from "@/lib/pokerCalculator";
 import { calculatePotOdds, compareEquityToPotOdds } from "@/lib/advancedCalculations";
 import { useCamera } from "@/hooks/useCamera";
 import { useAutoScan } from "@/hooks/useAutoScan";
 import { PlayingCard, CardPicker } from "@/components/PlayingCard";
-import { Scan, RefreshCw, ChevronUp, ChevronDown, Zap, ZapOff, Radio, X } from "lucide-react";
-import { TableState } from "@/lib/geminiVision";
+import { Scan, RefreshCw, ChevronUp, ChevronDown, Zap, ZapOff, Radio, X, BarChart3, TrendingUp, Shield } from "lucide-react";
+import { TableState } from "@/lib/visionApi";
+import { analyzePreflopHand, getPreflopHandTier } from "@/lib/preflopCharts";
+import { saveHand } from "@/lib/handHistory";
+import { Link } from "wouter";
 
 function parseCard(str: string) {
   return { rank: str[0] || "", suit: str[1] || "" };
@@ -33,18 +36,28 @@ export default function Home() {
   const { videoRef, ready: camReady, error: camError } = useCamera();
   const { tableState, isScanning, isAutoMode, error: scanError, rateLimitCountdown, scanCount, lastScanTime, motionDetected, toggleAutoMode, manualScan, reset } = useAutoScan();
 
-  // Cartas manuais (override do auto-scan)
   const [holeCards, setHoleCards] = useState<string[]>(["", ""]);
   const [boardCards, setBoardCards] = useState<string[]>(["", "", "", "", ""]);
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [manualMode, setManualMode] = useState(false);
+  const lastSavedRef = useRef<string>("");
 
-  // Análise calculada
   const [analysis, setAnalysis] = useState<HandAnalysis | null>(null);
   const [potOddsInfo, setPotOddsInfo] = useState<ReturnType<typeof compareEquityToPotOdds> | null>(null);
 
-  // Sincroniza cartas do tableState quando em modo auto
+  // SPR calculado
+  const spr = tableState?.myStack && tableState?.pot && tableState.pot > 0
+    ? (tableState.myStack / tableState.pot).toFixed(1)
+    : null;
+
+  // Preflop advice (só quando sem board)
+  const validHoleForPreflop = holeCards.filter(c => c.length === 2 && isValidCard(c));
+  const preflopAdvice = validHoleForPreflop.length === 2 && boardCards.filter(c => c.length === 2 && isValidCard(c)).length === 0
+    ? analyzePreflopHand(validHoleForPreflop, tableState?.myPosition || "BTN", "none")
+    : null;
+  const preflopTier = validHoleForPreflop.length === 2 ? getPreflopHandTier(validHoleForPreflop) : null;
+
   useEffect(() => {
     if (!tableState || manualMode) return;
     setHoleCards([tableState.holeCards[0] || "", tableState.holeCards[1] || ""]);
@@ -52,23 +65,42 @@ export default function Home() {
     setBoardCards([b[0] || "", b[1] || "", b[2] || "", b[3] || "", b[4] || ""]);
   }, [tableState, manualMode]);
 
-  // Recalcula análise sempre que cartas mudarem
   useEffect(() => {
     const validHole = holeCards.filter(c => c.length === 2 && isValidCard(c));
     const validBoard = boardCards.filter(c => c.length === 2 && isValidCard(c));
     if (validHole.length === 2 && validBoard.length >= 3) {
       try {
-        const result = analyzeHand({ holeCards: validHole, boardCards: validBoard });
+        const result = analyzeHand(
+          { holeCards: validHole, boardCards: validBoard },
+          { myStack: tableState?.myStack, pot: tableState?.pot, aiConfidence: tableState?.confidence }
+        );
         setAnalysis(result);
         setPanelOpen(true);
-        // Calcula pot odds se tiver contexto
         const pot = tableState?.pot || 0;
         const toCall = tableState?.toCall || 0;
-        if (pot > 0 && toCall > 0) {
-          const ev = compareEquityToPotOdds(result.equity, pot, toCall);
-          setPotOddsInfo(ev);
-        } else {
-          setPotOddsInfo(null);
+        if (pot > 0 && toCall > 0) setPotOddsInfo(compareEquityToPotOdds(result.equity, pot, toCall));
+        else setPotOddsInfo(null);
+
+        // Salva no histórico (evita duplicatas da mesma mão)
+        const key = `${validHole.join(",")}|${validBoard.join(",")}`;
+        if (key !== lastSavedRef.current) {
+          lastSavedRef.current = key;
+          saveHand({
+            holeCards: validHole,
+            board: validBoard,
+            handRank: result.handRank,
+            equity: result.equity,
+            outs: result.outs,
+            recommendation: result.recommendation,
+            confidence: result.confidence,
+            pot: tableState?.pot || 0,
+            toCall: tableState?.toCall || 0,
+            myStack: tableState?.myStack || 0,
+            position: tableState?.myPosition || "unknown",
+            street: tableState?.street || "unknown",
+            platform: tableState?.platform || "unknown",
+            aiConfidence: tableState?.confidence || 0,
+          });
         }
       } catch { setAnalysis(null); }
     } else {
@@ -149,10 +181,26 @@ export default function Home() {
                 {motionDetected ? 'Movimento!' : 'AO VIVO'}
               </span>
             )}
+            {tableState?.confidence !== undefined && tableState.confidence > 0 && (
+              <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border
+                ${tableState.confidence >= 70 ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                  : tableState.confidence >= 40 ? 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                  : 'bg-red-500/20 border-red-500/30 text-red-400'}`}>
+                <Shield className="w-3 h-3" />
+                IA {tableState.confidence}%
+              </span>
+            )}
           </div>
-          <button onClick={handleReset} className="w-8 h-8 rounded-full bg-slate-800/70 backdrop-blur flex items-center justify-center text-slate-400 active:scale-95">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/statistics">
+              <button className="w-8 h-8 rounded-full bg-slate-800/70 backdrop-blur flex items-center justify-center text-slate-400 active:scale-95">
+                <BarChart3 className="w-3.5 h-3.5" />
+              </button>
+            </Link>
+            <button onClick={handleReset} className="w-8 h-8 rounded-full bg-slate-800/70 backdrop-blur flex items-center justify-center text-slate-400 active:scale-95">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Erro câmera */}
@@ -368,10 +416,49 @@ export default function Home() {
                 <CardPicker onSelect={handleCardSelect} usedCards={usedCards} onClose={() => setEditingSlot(null)} />
               )}
 
-              {/* ANÁLISE */}
+              {/* PREFLOP GTO ADVICE — só sem board */}
+              {preflopAdvice && preflopTier && !editingSlot && (
+                <div className={`rounded-2xl p-4 border ${
+                  preflopTier.tier === 'premium' ? 'bg-gradient-to-br from-yellow-950 to-amber-900 border-yellow-700/30'
+                  : preflopTier.tier === 'strong' ? 'bg-gradient-to-br from-emerald-950 to-green-900 border-emerald-700/30'
+                  : preflopTier.tier === 'playable' ? 'bg-gradient-to-br from-blue-950 to-blue-900 border-blue-700/30'
+                  : 'bg-gradient-to-br from-red-950 to-red-900 border-red-700/30'
+                }`}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="text-slate-400 text-xs uppercase tracking-wider">Preflop GTO</p>
+                      <p className={`text-2xl font-black leading-tight ${
+                        preflopAdvice.action === 'open' ? 'text-emerald-300'
+                        : preflopAdvice.action === '3bet' ? 'text-yellow-300'
+                        : preflopAdvice.action === 'call' ? 'text-blue-300'
+                        : 'text-red-300'
+                      }`}>
+                        {preflopAdvice.action === 'open' ? '📤 OPEN' : preflopAdvice.action === '3bet' ? '🔥 3-BET' : preflopAdvice.action === 'call' ? '📞 CALL' : '🚫 FOLD'}
+                        {preflopAdvice.betSize && <span className="text-sm font-medium ml-2 opacity-70">{preflopAdvice.betSize}</span>}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-500 text-xs">Tier</p>
+                      <p className="text-sm font-bold text-white">{preflopTier.label}</p>
+                      {preflopAdvice.frequency && preflopAdvice.frequency < 100 && (
+                        <p className="text-xs text-slate-400">{preflopAdvice.frequency}% freq.</p>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-slate-300 text-xs">{preflopAdvice.reasoning}</p>
+                  {spr && (
+                    <div className="mt-2 flex items-center gap-1 text-xs text-slate-400">
+                      <TrendingUp className="w-3 h-3" />
+                      SPR: <strong className="text-white ml-0.5">{spr}</strong>
+                      <span className="ml-1 opacity-70">{Number(spr) < 3 ? '(stack curto)' : Number(spr) > 15 ? '(stack fundo)' : '(médio)'}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ANÁLISE POSTFLOP */}
               {analysis && rec && !editingSlot && (
                 <div className={`rounded-2xl p-4 bg-gradient-to-br ${rec.gradient} border border-white/5`}>
-                  {/* Cabeçalho da recomendação */}
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="text-slate-400 text-xs uppercase tracking-wider">Recomendação</p>
@@ -381,12 +468,11 @@ export default function Home() {
                       <p className="text-slate-400 text-xs mt-0.5 font-medium">{analysis.handRank}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-slate-500 text-xs">Equity</p>
+                      <p className="text-slate-500 text-xs">Equity (MC)</p>
                       <p className="text-4xl font-black text-white font-mono leading-none">{analysis.equity}%</p>
                     </div>
                   </div>
 
-                  {/* Barra de equity */}
                   <div className="w-full bg-slate-800/60 rounded-full h-2.5 mb-3 overflow-hidden">
                     <div
                       className="h-2.5 rounded-full transition-all duration-700"
@@ -394,8 +480,7 @@ export default function Home() {
                     />
                   </div>
 
-                  {/* Stats */}
-                  <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className={`grid gap-2 mb-3 ${spr ? 'grid-cols-4' : 'grid-cols-3'}`}>
                     <div className="bg-slate-900/50 rounded-xl p-2.5 text-center">
                       <p className="text-slate-500 text-xs">Outs</p>
                       <p className="text-white font-bold text-lg">{analysis.outs}</p>
@@ -410,9 +495,26 @@ export default function Home() {
                       <p className="text-slate-500 text-xs">Rank</p>
                       <p className="text-white font-bold text-sm font-mono">#{analysis.strength}</p>
                     </div>
+                    {spr && (
+                      <div className="bg-slate-900/50 rounded-xl p-2.5 text-center">
+                        <p className="text-slate-500 text-xs">SPR</p>
+                        <p className={`font-bold text-sm ${Number(spr) < 3 ? 'text-red-400' : Number(spr) > 15 ? 'text-green-400' : 'text-amber-400'}`}>{spr}</p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Pot Odds (se disponível) */}
+                  {/* Draws / Outs description */}
+                  {(analysis as any).outsDescription?.length > 0 && (
+                    <div className="mb-3 space-y-1">
+                      {(analysis as any).outsDescription.map((d: string, i: number) => (
+                        <div key={i} className="flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800/50 rounded-lg px-2.5 py-1.5">
+                          <TrendingUp className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                          {d}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {potOddsInfo && tableState && (
                     <div className={`rounded-xl p-3 border text-sm
                       ${potOddsInfo.recommendation === "call" ? "bg-green-900/30 border-green-700/30 text-green-300"
