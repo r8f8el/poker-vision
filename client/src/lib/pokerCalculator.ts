@@ -17,6 +17,13 @@ export interface PokerHand {
   boardCards: string[]; // ["Qs","Js","Ts"]
 }
 
+export interface RaiseInfo {
+  amount: number;     // valor total para subir (em fichas)
+  sizing: string;     // descrição do sizing ("65% pot", "2.5x BB", "3-bet", etc.)
+  label: string;      // texto curto para exibir no botão (ex: "Subir para 450")
+  reasoning: string;  // por que esse sizing
+}
+
 export interface HandAnalysis {
   handRank: string;
   strength: number;
@@ -26,6 +33,7 @@ export interface HandAnalysis {
   recommendation: "fold" | "call" | "raise" | "check";
   confidence: "high" | "medium" | "low";
   outsDescription: string[]; // ex: ["Flush draw (9 outs)"]
+  raiseInfo?: RaiseInfo;     // preenchido quando recommendation === "raise"
 }
 
 // ── Deck completo ──────────────────────────────────────────────────────────────
@@ -284,10 +292,112 @@ function getConfidence(equity: number, boardSize: number, aiConfidence?: number)
   return "medium";
 }
 
+// ── Raise Sizing GTO ──────────────────────────────────────────────────────────
+/**
+ * Calcula o tamanho ideal do raise/bet baseado em:
+ * - Preflop open: 2.2x-3x BB baseado em posição
+ * - Preflop 3-bet: 3x-3.5x o raise
+ * - Postflop: % do pot baseado em equity e street
+ */
+function calculateRaiseSize(
+  boardSize: number,
+  pot: number,
+  toCall: number,
+  equity: number,
+  position: string,
+  myStack: number,
+): RaiseInfo | undefined {
+  // ── PREFLOP ─────────────────────────────────────────────────────────────────
+  if (boardSize === 0) {
+    // Nenhum raise ainda → Open raise
+    if (toCall === 0 || toCall <= pot * 0.15) {
+      // Multiplier por posição (padrão GTO)
+      const multiplierMap: Record<string, number> = {
+        BTN: 2.2, CO: 2.5, HJ: 2.5, MP: 3.0, UTG: 3.0, SB: 3.0, BB: 4.0,
+      };
+      const mult = multiplierMap[position] ?? 2.5;
+      // Estima BB pelo pot (em preflop sem ação, pot ≈ 1.5 BB)
+      const estimatedBB = pot > 0 ? Math.round(pot / 1.5) : 1;
+      const amount = Math.round(mult * estimatedBB);
+      return {
+        amount,
+        sizing: `${mult}x BB`,
+        label: `Open ${mult}x BB${amount > 0 ? ` → ${amount}` : ""}`,
+        reasoning: `Open raise padrão na posição ${position}. Sizing GTO: ${mult}x BB.`,
+      };
+    }
+
+    // Existe um raise → 3-bet
+    const inPosition = ["BTN", "CO", "HJ"].includes(position);
+    const threeBetMult = inPosition ? 3.0 : 3.5;
+    const amount = Math.round(toCall * threeBetMult);
+    return {
+      amount,
+      sizing: `${threeBetMult}x raise`,
+      label: `3-bet → ${amount}`,
+      reasoning: `3-bet ${inPosition ? "em posição" : "fora de posição"}. Sizing: ${threeBetMult}x o raise (${toCall}).`,
+    };
+  }
+
+  // ── POSTFLOP ─────────────────────────────────────────────────────────────────
+  if (pot <= 0) return undefined;
+
+  let betPct: number;
+  let betLabel: string;
+  let betReason: string;
+
+  if (boardSize === 3) { // Flop
+    if (equity >= 78) {
+      betPct = 0.75; betLabel = "75% pot"; betReason = "Mão muito forte no flop — bet grande para construir pot";
+    } else if (equity >= 65) {
+      betPct = 0.60; betLabel = "60% pot"; betReason = "Mão forte — bet para extrair valor";
+    } else {
+      betPct = 0.40; betLabel = "40% pot"; betReason = "Semi-bluff/draw — bet pequeno para gerar equity";
+    }
+  } else if (boardSize === 4) { // Turn
+    if (equity >= 75) {
+      betPct = 0.75; betLabel = "75% pot"; betReason = "Mão muito forte no turn — build pot";
+    } else if (equity >= 62) {
+      betPct = 0.60; betLabel = "60% pot"; betReason = "Mão forte no turn — extraia valor";
+    } else {
+      betPct = 0.33; betLabel = "33% pot"; betReason = "Semi-bluff — bet pequeno ou check-raise";
+    }
+  } else { // River
+    if (equity >= 80) {
+      betPct = 1.0; betLabel = "Pot"; betReason = "Mão muito forte no river — bet pot para maximizar valor";
+    } else if (equity >= 68) {
+      betPct = 0.75; betLabel = "75% pot"; betReason = "Mão forte no river — value bet";
+    } else {
+      betPct = 0.50; betLabel = "50% pot"; betReason = "Bluff/thin value no river";
+    }
+  }
+
+  // Se há raise na mesa, considerar re-raise (pot-sized ou 2.5x)
+  if (toCall > 0) {
+    const raiseAmount = Math.round(toCall * 2.5 + pot);
+    const cappedAmount = Math.min(raiseAmount, myStack);
+    return {
+      amount: cappedAmount,
+      sizing: "2.5x raise",
+      label: `Re-raise → ${cappedAmount}`,
+      reasoning: `Re-raise de 2.5x. Pot atual: ${pot}, raise: ${toCall}.`,
+    };
+  }
+
+  const betAmount = Math.round(pot * betPct);
+  const cappedBet = Math.min(betAmount, myStack);
+  return {
+    amount: cappedBet,
+    sizing: betLabel,
+    label: `Bet ${betLabel} → ${cappedBet}`,
+    reasoning: betReason,
+  };
+}
+
 // ── API pública ────────────────────────────────────────────────────────────────
 export function analyzeHand(
   hand: PokerHand,
-  context?: { myStack?: number; pot?: number; aiConfidence?: number }
+  context?: { myStack?: number; pot?: number; toCall?: number; position?: string; aiConfidence?: number }
 ): HandAnalysis {
   try {
     const allCards = [...hand.holeCards, ...hand.boardCards];
@@ -327,6 +437,18 @@ export function analyzeHand(
 
     const confidence = getConfidence(equity, hand.boardCards.length, context?.aiConfidence);
 
+    // Raise sizing — só calcula quando recomenda raise
+    const raiseInfo = recommendation === "raise"
+      ? calculateRaiseSize(
+          hand.boardCards.length,
+          context?.pot ?? 0,
+          context?.toCall ?? 0,
+          equity,
+          context?.position ?? "BTN",
+          context?.myStack ?? 0,
+        )
+      : undefined;
+
     return {
       handRank: handRankName,
       strength,
@@ -336,6 +458,7 @@ export function analyzeHand(
       recommendation,
       confidence,
       outsDescription: outsResult.descriptions,
+      raiseInfo,
     };
   } catch (error) {
     console.error("Erro ao analisar mão:", error);

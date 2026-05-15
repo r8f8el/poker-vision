@@ -96,7 +96,13 @@ export default function Home() {
       try {
         const result = analyzeHand(
           { holeCards: validHole, boardCards: validBoard },
-          { myStack: tableState?.myStack, pot: tableState?.pot, aiConfidence: tableState?.confidence }
+          {
+            myStack: tableState?.myStack,
+            pot: tableState?.pot,
+            toCall: tableState?.toCall,
+            position: tableState?.myPosition,
+            aiConfidence: tableState?.confidence,
+          }
         );
         setAnalysis(result);
         setPanelOpen(true);
@@ -571,6 +577,24 @@ export default function Home() {
                           {d}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* RAISE SIZING */}
+                  {analysis.raiseInfo && (
+                    <div className="mb-3 rounded-xl bg-emerald-900/40 border border-emerald-600/40 p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-emerald-300 font-bold text-sm flex items-center gap-1.5">
+                          <span className="text-base">📈</span> Quanto subir
+                        </p>
+                        <span className="text-emerald-400 text-xs bg-emerald-900/60 rounded-lg px-2 py-0.5 font-mono">
+                          {analysis.raiseInfo.sizing}
+                        </span>
+                      </div>
+                      <p className="text-white font-black text-2xl font-mono leading-tight">
+                        {analysis.raiseInfo.amount > 0 ? analysis.raiseInfo.amount : analysis.raiseInfo.label}
+                      </p>
+                      <p className="text-emerald-400/80 text-xs mt-1">{analysis.raiseInfo.reasoning}</p>
                     </div>
                   )}
 
