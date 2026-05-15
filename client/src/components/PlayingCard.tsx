@@ -28,6 +28,8 @@ export function PlayingCard({ rank, suit, size = "md", selected, onClick, empty 
   const s = sizes[size];
   const color = SUIT_COLORS[suit] || "#1e293b";
   const symbol = SUIT_SYMBOLS[suit] || suit;
+  // Exibe "10" no lugar de "T"
+  const displayRank = rank === "T" ? "10" : rank;
 
   if (empty) {
     return (
@@ -49,7 +51,7 @@ export function PlayingCard({ rank, suit, size = "md", selected, onClick, empty 
         ${onClick ? "hover:scale-105 active:scale-95" : ""}
       `}
     >
-      <span className={`${s.rank} font-bold leading-none`} style={{ color }}>{rank}</span>
+      <span className={`${displayRank === "10" ? "text-base" : s.rank} font-bold leading-none`} style={{ color }}>{displayRank}</span>
       <span className={`${s.suit} leading-none`} style={{ color }}>{symbol}</span>
     </div>
   );
@@ -59,6 +61,9 @@ export function PlayingCard({ rank, suit, size = "md", selected, onClick, empty 
  * Seletor visual de cartas (rank → suit)
  */
 const RANKS = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"];
+// Label de exibição: "T" interno → "10" na UI
+const RANK_DISPLAY: Record<string, string> = { T: "10" };
+
 const SUITS = [
   { code: "s", symbol: "♠", color: "#94a3b8" },
   { code: "h", symbol: "♥", color: "#dc2626" },
@@ -91,7 +96,7 @@ export function CardPicker({ onSelect, usedCards = [], onClose }: CardPickerProp
     <div className="bg-slate-900 rounded-2xl p-4 w-full">
       <div className="flex items-center justify-between mb-3">
         <span className="text-white font-semibold text-sm">
-          {selectedRank ? `Rank ${selectedRank} — escolha o naipe` : "Escolha o rank"}
+          {selectedRank ? `Rank ${RANK_DISPLAY[selectedRank] || selectedRank} — escolha o naipe` : "Escolha o rank"}
         </span>
         <button onClick={onClose} className="text-slate-400 text-xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
       </div>
@@ -110,7 +115,7 @@ export function CardPicker({ onSelect, usedCards = [], onClose }: CardPickerProp
                 ${allUsed ? "opacity-30 cursor-not-allowed" : "active:scale-95"}
               `}
             >
-              {r}
+              {RANK_DISPLAY[r] || r}
             </button>
           );
         })}

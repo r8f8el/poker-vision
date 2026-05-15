@@ -139,6 +139,8 @@ HOLE CARDS RULES:
 - If NO hole cards are visible (player folded, between hands, or cards are face-down/hidden), return "holeCards": []
 - Do NOT guess or invent hole cards if you cannot clearly see them
 - If only 1 card is visible, return that 1 card only
+- IMPORTANT: The number "10" on a card must be returned as "T" (e.g. 10♠ → "Ts", 10♥ → "Th", 10♦ → "Td", 10♣ → "Tc")
+- Card ranks: A K Q J T(=10) 9 8 7 6 5 4 3 2 — "T" always represents ten/10
 
 BOARD RULES:
 - "board" = community cards in the center of the table (0 to 5 cards)
