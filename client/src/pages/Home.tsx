@@ -42,6 +42,7 @@ export default function Home() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [manualMode, setManualMode] = useState(false);
   const lastSavedRef = useRef<string>("");
+  const [foldToast, setFoldToast] = useState(false);
 
   const [analysis, setAnalysis] = useState<HandAnalysis | null>(null);
   const [potOddsInfo, setPotOddsInfo] = useState<ReturnType<typeof compareEquityToPotOdds> | null>(null);
@@ -61,9 +62,20 @@ export default function Home() {
   useEffect(() => {
     if (!tableState || manualMode) return;
 
-    // Nova mão detectada: IA não vê hole cards (fold/entre mãos)
+    // ── Fold detectado pela IA ────────────────────────────────────────────────
+    if (tableState.playerFolded) {
+      setHoleCards(["", ""]);
+      setBoardCards(["", "", "", "", ""]);
+      setAnalysis(null);
+      setPotOddsInfo(null);
+      lastSavedRef.current = "";
+      setFoldToast(true);
+      setTimeout(() => setFoldToast(false), 2500);
+      return;
+    }
+
+    // ── Sem hole cards visíveis (entre mãos) ─────────────────────────────────
     if (tableState.holeCards.length === 0 && tableState.confidence >= 50) {
-      // Limpa as cartas e análise, mas mantém o auto-scan rodando
       setHoleCards(["", ""]);
       setBoardCards(["", "", "", "", ""]);
       setAnalysis(null);
@@ -226,6 +238,19 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {/* Fold Toast */}
+        {foldToast && (
+          <div className="absolute inset-x-4 top-24 flex justify-center animate-fade-in z-20">
+            <div className="bg-red-900/90 backdrop-blur border border-red-700/60 rounded-2xl px-5 py-3 flex items-center gap-3 shadow-xl">
+              <span className="text-2xl">🚫</span>
+              <div>
+                <p className="text-red-200 font-bold text-sm">Fold detectado</p>
+                <p className="text-red-400 text-xs">Aguardando próxima mão...</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Erro câmera */}
         {camError && (
