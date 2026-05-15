@@ -61,13 +61,59 @@ const RANK_MAP: Record<string, string> = {
 
 export function captureFrameAsBase64(video: HTMLVideoElement): string | null {
   try {
+    const srcW = video.videoWidth || 640;
+    const srcH = video.videoHeight || 480;
+
+    // ── Upscaling: garante mínimo de 1280px de largura para OCR melhor ────────
+    const scale = srcW < 1280 ? Math.min(2.0, 1280 / srcW) : 1.0;
+    const outW = Math.round(srcW * scale);
+    const outH = Math.round(srcH * scale);
+
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = outW;
+    canvas.height = outH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    ctx.drawImage(video, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+
+    // ── Filtro de contraste/brilho/saturação antes de desenhar ────────────────
+    ctx.filter = "contrast(1.25) brightness(1.1) saturate(1.15)";
+    ctx.drawImage(video, 0, 0, outW, outH);
+    ctx.filter = "none";
+
+    // ── Anotações de região: guia o modelo a focar nas áreas certas ──────────
+    // Região das Hole Cards (bottom 30%, centro 60%)
+    const hcX = Math.round(outW * 0.20);
+    const hcY = Math.round(outH * 0.68);
+    const hcW = Math.round(outW * 0.60);
+    const hcH = Math.round(outH * 0.30);
+
+    ctx.strokeStyle = "rgba(0, 255, 100, 0.85)";
+    ctx.lineWidth = Math.max(2, outW / 320);
+    ctx.setLineDash([8, 4]);
+    ctx.strokeRect(hcX, hcY, hcW, hcH);
+
+    ctx.fillStyle = "rgba(0, 200, 80, 0.85)";
+    ctx.font = `bold ${Math.round(outH * 0.022)}px sans-serif`;
+    ctx.fillText("YOUR HOLE CARDS", hcX + 4, hcY - 6);
+
+    // Região do Board / Community Cards (centro vertical, centro horizontal)
+    const bdX = Math.round(outW * 0.15);
+    const bdY = Math.round(outH * 0.30);
+    const bdW = Math.round(outW * 0.70);
+    const bdH = Math.round(outH * 0.28);
+
+    ctx.strokeStyle = "rgba(80, 160, 255, 0.80)";
+    ctx.lineWidth = Math.max(2, outW / 320);
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(bdX, bdY, bdW, bdH);
+
+    ctx.fillStyle = "rgba(80, 160, 255, 0.85)";
+    ctx.fillText("BOARD / COMMUNITY CARDS", bdX + 4, bdY - 6);
+
+    ctx.setLineDash([]); // reset
+
+    // ── JPEG alta qualidade ───────────────────────────────────────────────────
+    return canvas.toDataURL("image/jpeg", 0.95).split(",")[1];
   } catch {
     return null;
   }
