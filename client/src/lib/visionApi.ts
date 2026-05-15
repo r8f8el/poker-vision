@@ -171,22 +171,29 @@ FOLD DETECTION (most important rule for this app):
 - If the player's cards are clearly visible face-up, set "playerFolded": false
 - Default: "playerFolded": false
 
-SUIT IDENTIFICATION RULES (critical - study the symbol carefully):
-- "s" = SPADES ♠ → BLACK suit, looks like an upside-down heart with a stem, pointed at top
-- "c" = CLUBS ♣ → BLACK suit, looks like a 3-leaf clover / trefoil shape with a stem
-- "h" = HEARTS ♥ → RED suit, looks like a heart shape, rounded top with a point at bottom
-- "d" = DIAMONDS ♦ → RED suit, looks like a rotated square / rhombus / diamond shape
-- If the suit symbol is BLACK: look carefully — spade (♠) has a pointed top, club (♣) has rounded bumps on top
-- If you are unsure between ♠ and ♣, prefer ♠ for angular/pointed shapes and ♣ for round/bumpy shapes
-- Card format: rank + suit letter. Rank: A K Q J T 9 8 7 6 5 4 3 2. Suit: s h d c
+SUIT IDENTIFICATION — 2-STEP RULE (critical, follow exactly):
 
-HOLE CARDS RULES:
-- "holeCards" = the 2 private cards dealt face-up to the player (usually at bottom center of screen)
-- If NO hole cards are visible (player folded, between hands, or cards are face-down/hidden), return "holeCards": []
-- Do NOT guess or invent hole cards if you cannot clearly see them
-- If only 1 card is visible, return that 1 card only
-- IMPORTANT: The number "10" on a card must be returned as "T" (e.g. 10♠ → "Ts", 10♥ → "Th", 10♦ → "Td", 10♣ → "Tc")
-- Card ranks: A K Q J T(=10) 9 8 7 6 5 4 3 2 — "T" always represents ten/10
+STEP 1 — DETERMINE THE COLOR of the suit symbol:
+  → If the suit symbol is RED (any shade of red/pink/orange): it can ONLY be "h" (hearts ♥) or "d" (diamonds ♦)
+  → If the suit symbol is BLACK (dark/black/gray): it can ONLY be "s" (spades ♠) or "c" (clubs ♣)
+  → A red card NEVER has spades or clubs. A black card NEVER has hearts or diamonds.
+
+STEP 2 — DETERMINE WHICH SUIT within that color:
+  RED suits:
+    - "h" = HEARTS ♥ → heart shape: two bumps on top, point at bottom (like a valentine heart)
+    - "d" = DIAMONDS ♦ → diamond/rhombus shape: rotated square, 4 equal sides, pointed top and bottom
+  BLACK suits:
+    - "s" = SPADES ♠ → pointed top (like an upside-down heart with a long stem below)
+    - "c" = CLUBS ♣ → three round bubbles/circles on top (like a 3-leaf clover with a short stem)
+
+EXAMPLES:
+  - Red heart shape → "h" (hearts)
+  - Red diamond shape → "d" (diamonds)
+  - Black pointed shape → "s" (spades)
+  - Black clover/round shape → "c" (clubs)
+  - Card rank format: rank + suit. Example: Ace of hearts = "Ah", King of spades = "Ks"
+  - IMPORTANT: The number "10" on a card must be returned as "T" (10♥ → "Th", 10♠ → "Ts", etc.)
+
 
 BOARD RULES:
 - "board" = community cards in the center of the table (0 to 5 cards)
