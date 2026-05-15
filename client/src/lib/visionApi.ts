@@ -346,8 +346,7 @@ async function analyzeWithOpenRouter(
       "X-Title": "PokerVision",
     },
     body: JSON.stringify({
-      model: "meta-llama/llama-3.2-11b-vision-instruct:free",
-      response_format: { type: "json_object" },
+      model: "google/gemini-2.0-flash-lite-preview-02-05:free",
       messages: [{
         role: "user",
         content: [

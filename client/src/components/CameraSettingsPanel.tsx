@@ -38,8 +38,8 @@ const AI_PROVIDERS: { id: VisionProvider; name: string; model: string; desc: str
   {
     id: "openrouter",
     name: "OpenRouter",
-    model: "Qwen 2.5 VL 72B",
-    desc: "100+ modelos • Qwen VL grátis",
+    model: "Gemini 2.0 Flash Lite",
+    desc: "100+ modelos • Rápido e Grátis",
     color: "purple",
   },
 ];
