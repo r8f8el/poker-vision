@@ -4,7 +4,8 @@ import { calculatePotOdds, compareEquityToPotOdds } from "@/lib/advancedCalculat
 import { useCamera } from "@/hooks/useCamera";
 import { useAutoScan } from "@/hooks/useAutoScan";
 import { PlayingCard, CardPicker } from "@/components/PlayingCard";
-import { Scan, RefreshCw, ChevronUp, ChevronDown, Zap, ZapOff, Radio, X, BarChart3, TrendingUp, Shield, RotateCcw } from "lucide-react";
+import { CameraSettingsPanel } from "@/components/CameraSettingsPanel";
+import { Scan, RefreshCw, ChevronUp, ChevronDown, Zap, ZapOff, Radio, X, BarChart3, TrendingUp, Shield, RotateCcw, Settings } from "lucide-react";
 import { TableState } from "@/lib/visionApi";
 import { analyzePreflopHand, getPreflopHandTier } from "@/lib/preflopCharts";
 import { saveHand } from "@/lib/handHistory";
@@ -33,9 +34,10 @@ const REC_STYLE: Record<string, { gradient: string; textColor: string; badge: st
 };
 
 export default function Home() {
-  const { videoRef, ready: camReady, error: camError } = useCamera();
+  const { videoRef, ready: camReady, error: camError, devices, settings: camSettings, capabilities: camCap, updateSettings: updateCamSettings, tapToFocus } = useCamera();
   const { tableState, isScanning, isAutoMode, error: scanError, rateLimitCountdown, scanCount, lastScanTime, motionDetected, toggleAutoMode, manualScan, reset } = useAutoScan();
 
+  const [showCameraSettings, setShowCameraSettings] = useState(false);
   const [holeCards, setHoleCards] = useState<string[]>(["", ""]);
   const [boardCards, setBoardCards] = useState<string[]>(["", "", "", "", ""]);
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
@@ -203,7 +205,17 @@ export default function Home() {
 
       {/* ══ CÂMERA ══ */}
       <div className="relative flex-1 bg-black overflow-hidden min-h-0">
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline autoPlay muted />
+        <video
+          ref={videoRef}
+          className="absolute inset-0 w-full h-full object-cover"
+          playsInline autoPlay muted
+          onClick={e => {
+            if (camSettings.focusMode === "manual" && camCap.focus) {
+              const rect = (e.target as HTMLVideoElement).getBoundingClientRect();
+              tapToFocus(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
+            }
+          }}
+        />
 
         {/* Vinheta */}
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-transparent to-slate-950/90 pointer-events-none" />
@@ -239,11 +251,28 @@ export default function Home() {
                 <BarChart3 className="w-3.5 h-3.5" />
               </button>
             </Link>
+            <button
+              onClick={() => setShowCameraSettings(true)}
+              className="w-8 h-8 rounded-full bg-slate-800/70 backdrop-blur flex items-center justify-center text-slate-400 active:scale-95"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
             <button onClick={handleReset} className="w-8 h-8 rounded-full bg-slate-800/70 backdrop-blur flex items-center justify-center text-slate-400 active:scale-95">
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
+
+        {/* Camera Settings Panel */}
+        {showCameraSettings && (
+          <CameraSettingsPanel
+            settings={camSettings}
+            devices={devices}
+            capabilities={camCap}
+            onUpdate={updateCamSettings}
+            onClose={() => setShowCameraSettings(false)}
+          />
+        )}
 
         {/* Fold Toast */}
         {foldToast && (
