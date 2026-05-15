@@ -300,7 +300,7 @@ async function analyzeWithGemini(
   apiKey: string,
   prompt: string
 ): Promise<GeminiDetectionResult> {
-  const model = "gemini-2.5-flash-preview-04-17";
+  const model = "gemini-1.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
@@ -392,6 +392,7 @@ export async function analyzeTableWithVision(
   };
 
   const chain = ORDER[provider];
+  let lastError = "";
 
   for (let i = 0; i < chain.length; i++) {
     try {
@@ -408,15 +409,13 @@ export async function analyzeTableWithVision(
       ) as 0 | 1 | 2]);
       return result;
     } catch (err) {
-      if (!(err instanceof RateLimitError) && !(err instanceof Error && err.message.startsWith("Sem chave"))) {
-        // Erro real (não rate limit, não chave faltando) — retorna erro
-        return { cards: [], tableState: null, rawResponse: "", error: (err as Error).message };
-      }
-      // Rate limit ou sem chave → tenta próximo
+      lastError = err instanceof Error ? err.message : String(err);
+      // Fallback: se der qualquer erro (404, rate limit, sem chave, erro interno),
+      // o loop apenas continua para o próximo provider da lista.
     }
   }
 
-  return { cards: [], tableState: null, rawResponse: "", error: "Todos os providers falharam ou atingiram o limite." };
+  return { cards: [], tableState: null, rawResponse: "", error: `Todos os providers falharam. Último erro: ${lastError}` };
 }
 
 export function formatCardForCalculator(card: GeminiDetectedCard): string {
