@@ -1,7 +1,10 @@
 /**
- * Gemini Vision Service - Full Table Analysis
- * Analisa a mesa completa de poker a partir de um frame da câmera
+ * Vision API — Multi-provider poker table analysis
+ * Providers: Groq (Llama 4 Scout) | Google Gemini 2.5 Flash | OpenRouter (Qwen VL / Claude)
  */
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+export type VisionProvider = "groq" | "gemini" | "openrouter";
 
 export class RateLimitError extends Error {
   waitSeconds: number;
@@ -13,19 +16,19 @@ export class RateLimitError extends Error {
 }
 
 export interface TableState {
-  holeCards: string[];        // ["As", "Kh"]
-  board: string[];            // ["Qs", "Js", "Ts"]
-  pot: number;                // tamanho do pot
-  toCall: number;             // quanto precisa pagar
-  myStack: number;            // meu stack
-  myPosition: string;         // "BTN", "BB", "SB", "UTG", etc.
-  myTurn: boolean;            // é minha vez?
-  activePlayers: number;      // jogadores ainda na mão
-  lastActions: string[];      // ["raise 120", "fold", "call 120"]
+  holeCards: string[];
+  board: string[];
+  pot: number;
+  toCall: number;
+  myStack: number;
+  myPosition: string;
+  myTurn: boolean;
+  activePlayers: number;
+  lastActions: string[];
   street: "preflop" | "flop" | "turn" | "river" | "showdown" | "unknown";
-  platform: string;           // "PokerStars", "GGPoker", etc.
-  confidence: number;         // 0-100 confiança da leitura
-  playerFolded: boolean;      // true se o jogador (posição inferior) deu fold
+  platform: string;
+  confidence: number;
+  playerFolded: boolean;
 }
 
 export interface GeminiDetectedCard {
@@ -42,6 +45,7 @@ export interface GeminiDetectionResult {
   error?: string;
 }
 
+// ── Maps ──────────────────────────────────────────────────────────────────────
 const SUIT_MAP: Record<string, string> = {
   "♠": "s", S: "s", s: "s", spades: "s", espadas: "s",
   "♥": "h", H: "h", h: "h", hearts: "h", copas: "h",
@@ -59,12 +63,13 @@ const RANK_MAP: Record<string, string> = {
   "6": "6", "5": "5", "4": "4", "3": "3", "2": "2",
 };
 
+// ── Image Capture ─────────────────────────────────────────────────────────────
 export function captureFrameAsBase64(video: HTMLVideoElement): string | null {
   try {
     const srcW = video.videoWidth || 640;
     const srcH = video.videoHeight || 480;
 
-    // ── Upscaling: garante mínimo de 1280px de largura para OCR melhor ────────
+    // Upscaling para mínimo 1280px de largura
     const scale = srcW < 1280 ? Math.min(2.0, 1280 / srcW) : 1.0;
     const outW = Math.round(srcW * scale);
     const outH = Math.round(srcH * scale);
@@ -75,13 +80,12 @@ export function captureFrameAsBase64(video: HTMLVideoElement): string | null {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    // ── Filtro de contraste/brilho/saturação antes de desenhar ────────────────
+    // Filtro: contraste + brilho + saturação
     ctx.filter = "contrast(1.25) brightness(1.1) saturate(1.15)";
     ctx.drawImage(video, 0, 0, outW, outH);
     ctx.filter = "none";
 
-    // ── Anotações de região: guia o modelo a focar nas áreas certas ──────────
-    // Região das Hole Cards (bottom 30%, centro 60%)
+    // Anotações de região — guia o modelo
     const hcX = Math.round(outW * 0.20);
     const hcY = Math.round(outH * 0.68);
     const hcW = Math.round(outW * 0.60);
@@ -91,12 +95,10 @@ export function captureFrameAsBase64(video: HTMLVideoElement): string | null {
     ctx.lineWidth = Math.max(2, outW / 320);
     ctx.setLineDash([8, 4]);
     ctx.strokeRect(hcX, hcY, hcW, hcH);
-
     ctx.fillStyle = "rgba(0, 200, 80, 0.85)";
     ctx.font = `bold ${Math.round(outH * 0.022)}px sans-serif`;
     ctx.fillText("YOUR HOLE CARDS", hcX + 4, hcY - 6);
 
-    // Região do Board / Community Cards (centro vertical, centro horizontal)
     const bdX = Math.round(outW * 0.15);
     const bdY = Math.round(outH * 0.30);
     const bdW = Math.round(outW * 0.70);
@@ -106,19 +108,17 @@ export function captureFrameAsBase64(video: HTMLVideoElement): string | null {
     ctx.lineWidth = Math.max(2, outW / 320);
     ctx.setLineDash([6, 3]);
     ctx.strokeRect(bdX, bdY, bdW, bdH);
-
     ctx.fillStyle = "rgba(80, 160, 255, 0.85)";
     ctx.fillText("BOARD / COMMUNITY CARDS", bdX + 4, bdY - 6);
+    ctx.setLineDash([]);
 
-    ctx.setLineDash([]); // reset
-
-    // ── JPEG alta qualidade ───────────────────────────────────────────────────
     return canvas.toDataURL("image/jpeg", 0.95).split(",")[1];
   } catch {
     return null;
   }
 }
 
+// ── Card Parsers ──────────────────────────────────────────────────────────────
 function normalizeCard(rank: string, suit: string): string | null {
   const r = RANK_MAP[rank?.toUpperCase()?.trim()];
   const s = SUIT_MAP[suit?.toLowerCase()?.trim()];
@@ -136,14 +136,45 @@ function parseCards(arr: any[]): string[] {
     .filter(Boolean) as string[];
 }
 
-/**
- * Analisa a mesa completa de poker via Gemini Vision
- */
-export async function analyzeTableWithVision(
-  imageBase64: string,
-  apiKey: string
-): Promise<GeminiDetectionResult> {
-  const prompt = `You are an expert poker computer vision system analyzing a screenshot of an online poker table.
+function extractJson(text: string): any | null {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try { return JSON.parse(match[0]); } catch { return null; }
+}
+
+function parseTableState(parsed: any): { tableState: TableState; cards: GeminiDetectedCard[] } {
+  const holeCards = parseCards(parsed.holeCards || []);
+  const board = parseCards(parsed.board || []);
+
+  const tableState: TableState = {
+    holeCards,
+    board,
+    pot: Number(parsed.pot) || 0,
+    toCall: Number(parsed.toCall) || 0,
+    myStack: Number(parsed.myStack) || 0,
+    myPosition: parsed.myPosition || "unknown",
+    myTurn: Boolean(parsed.myTurn),
+    activePlayers: Number(parsed.activePlayers) || 0,
+    lastActions: Array.isArray(parsed.lastActions) ? parsed.lastActions : [],
+    street: parsed.street || "unknown",
+    platform: parsed.platform || "unknown",
+    confidence: Number(parsed.confidence) || 0,
+    playerFolded: Boolean(parsed.playerFolded),
+  };
+
+  const cards: GeminiDetectedCard[] = [...holeCards, ...board].map((c, i) => ({
+    rank: c[0],
+    suit: c[1],
+    display: `${c[0]}${SUIT_SYMBOL[c[1]] || c[1]}`,
+    confidence: tableState.confidence - i,
+  }));
+
+  return { tableState, cards };
+}
+
+// ── Prompt ────────────────────────────────────────────────────────────────────
+function buildPrompt(): string {
+  return `You are an expert poker computer vision system analyzing a screenshot of an online poker table.
 
 Extract ALL visible information and return ONLY a valid JSON object (no markdown, no explanation):
 {
@@ -194,14 +225,13 @@ EXAMPLES:
   - Card rank format: rank + suit. Example: Ace of hearts = "Ah", King of spades = "Ks"
   - IMPORTANT: The number "10" on a card must be returned as "T" (10♥ → "Th", 10♠ → "Ts", etc.)
 
-
 BOARD RULES:
 - "board" = community cards in the center of the table (0 to 5 cards)
 - Return only clearly visible board cards, skip face-down cards
 
 GENERAL RULES:
 - "pot": numeric chip value shown (0 if not visible)
-- "toCall": amount needed to call (0 if not visible or it's a check)  
+- "toCall": amount needed to call (0 if not visible or it's a check)
 - "myStack": player's chip stack (0 if not visible)
 - "myPosition": BTN, SB, BB, UTG, MP, CO, HJ or "unknown"
 - "myTurn": true ONLY if there is a timer/clock or action buttons visible for the player
@@ -212,85 +242,183 @@ GENERAL RULES:
 - "confidence": your overall confidence 0-100 (be conservative — only give 80+ if you are very certain)
 
 If no poker game is visible: {"confidence": 0, "holeCards": [], "board": [], "pot": 0, "toCall": 0, "myStack": 0, "myPosition": "unknown", "myTurn": false, "activePlayers": 0, "lastActions": [], "street": "unknown", "platform": "unknown", "playerFolded": false}`;
+}
 
+// ── Provider State ─────────────────────────────────────────────────────────────
+let currentProvider: VisionProvider =
+  (localStorage.getItem("pv_vision_provider") as VisionProvider) || "groq";
 
-  try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
-            ]
-          }
+export function setVisionProvider(p: VisionProvider) {
+  currentProvider = p;
+  localStorage.setItem("pv_vision_provider", p);
+}
+
+export function getVisionProvider(): VisionProvider {
+  return currentProvider;
+}
+
+// ── Provider: Groq ────────────────────────────────────────────────────────────
+async function analyzeWithGroq(
+  imageBase64: string,
+  apiKey: string,
+  prompt: string
+): Promise<GeminiDetectionResult> {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      response_format: { type: "json_object" },
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
         ],
-        temperature: 0.1
-      })
-    });
+      }],
+      temperature: 0.1,
+    }),
+  });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        const retryAfter = response.headers.get("Retry-After");
-        const waitSec = retryAfter ? parseInt(retryAfter) : 30;
-        throw new RateLimitError(`Limite de requisições atingido. Aguarde ${waitSec}s.`, waitSec);
-      }
-      const errText = await response.text();
-      throw new Error(`API error: ${response.status} - ${errText}`);
+  if (!response.ok) {
+    if (response.status === 429) {
+      const waitSec = parseInt(response.headers.get("Retry-After") || "30");
+      throw new RateLimitError(`Groq: rate limit — aguarde ${waitSec}s`, waitSec);
     }
-
-    const data = await response.json();
-    const text = data.choices[0]?.message?.content || "{}";
-
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { cards: [], tableState: null, rawResponse: text };
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    const holeCards = parseCards(parsed.holeCards || []);
-    const board = parseCards(parsed.board || []);
-
-    const tableState: TableState = {
-      holeCards,
-      board,
-      pot: Number(parsed.pot) || 0,
-      toCall: Number(parsed.toCall) || 0,
-      myStack: Number(parsed.myStack) || 0,
-      myPosition: parsed.myPosition || "unknown",
-      myTurn: Boolean(parsed.myTurn),
-      activePlayers: Number(parsed.activePlayers) || 0,
-      lastActions: Array.isArray(parsed.lastActions) ? parsed.lastActions : [],
-      street: parsed.street || "unknown",
-      platform: parsed.platform || "unknown",
-      confidence: Number(parsed.confidence) || 0,
-      playerFolded: Boolean(parsed.playerFolded),
-    };
-
-    // Também retorna cards no formato antigo para compatibilidade
-    const cards: GeminiDetectedCard[] = [...holeCards, ...board].map((c, i) => ({
-      rank: c[0],
-      suit: c[1],
-      display: `${c[0]}${SUIT_SYMBOL[c[1]] || c[1]}`,
-      confidence: tableState.confidence - i,
-    }));
-
-    return { cards, tableState, rawResponse: text };
-  } catch (error) {
-    return {
-      cards: [],
-      tableState: null,
-      rawResponse: "",
-      error: error instanceof Error ? error.message : "Erro desconhecido",
-    };
+    throw new Error(`Groq error ${response.status}: ${await response.text()}`);
   }
+
+  const data = await response.json();
+  const text: string = data.choices[0]?.message?.content || "{}";
+  const parsed = extractJson(text);
+  if (!parsed) return { cards: [], tableState: null, rawResponse: text };
+  const { tableState, cards } = parseTableState(parsed);
+  return { cards, tableState, rawResponse: text };
+}
+
+// ── Provider: Google Gemini ───────────────────────────────────────────────────
+async function analyzeWithGemini(
+  imageBase64: string,
+  apiKey: string,
+  prompt: string
+): Promise<GeminiDetectionResult> {
+  const model = "gemini-2.5-flash-preview-04-17";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: "image/jpeg", data: imageBase64 } },
+        ],
+      }],
+      generationConfig: { response_mime_type: "application/json", temperature: 0.1 },
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 429) throw new RateLimitError("Gemini: rate limit — aguarde 30s", 30);
+    throw new Error(`Gemini error ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  const parsed = extractJson(text);
+  if (!parsed) return { cards: [], tableState: null, rawResponse: text };
+  const { tableState, cards } = parseTableState(parsed);
+  return { cards, tableState, rawResponse: text };
+}
+
+// ── Provider: OpenRouter ──────────────────────────────────────────────────────
+// Usa qwen/qwen2.5-vl-72b-instruct — excelente visão, gratuito via OpenRouter
+async function analyzeWithOpenRouter(
+  imageBase64: string,
+  apiKey: string,
+  prompt: string
+): Promise<GeminiDetectionResult> {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://poker-vision-theta.vercel.app",
+      "X-Title": "PokerVision",
+    },
+    body: JSON.stringify({
+      model: "qwen/qwen2.5-vl-72b-instruct:free",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+        ],
+      }],
+      temperature: 0.1,
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 429) throw new RateLimitError("OpenRouter: rate limit — aguarde 30s", 30);
+    throw new Error(`OpenRouter error ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  const text: string = data.choices[0]?.message?.content || "{}";
+  const parsed = extractJson(text);
+  if (!parsed) return { cards: [], tableState: null, rawResponse: text };
+  const { tableState, cards } = parseTableState(parsed);
+  return { cards, tableState, rawResponse: text };
+}
+
+// ── Public API: tenta provider ativo, faz fallback automático ─────────────────
+export async function analyzeTableWithVision(
+  imageBase64: string,
+  groqKey: string,
+  geminiKey?: string,
+  openRouterKey?: string,
+): Promise<GeminiDetectionResult> {
+  const prompt = buildPrompt();
+  const provider = currentProvider;
+
+  const tryGroq       = () => groqKey       ? analyzeWithGroq(imageBase64, groqKey, prompt)             : Promise.reject(new Error("Sem chave Groq"));
+  const tryGemini     = () => geminiKey     ? analyzeWithGemini(imageBase64, geminiKey, prompt)         : Promise.reject(new Error("Sem chave Gemini"));
+  const tryOpenRouter = () => openRouterKey ? analyzeWithOpenRouter(imageBase64, openRouterKey, prompt) : Promise.reject(new Error("Sem chave OpenRouter"));
+
+  const ORDER: Record<VisionProvider, (() => Promise<GeminiDetectionResult>)[]> = {
+    groq:       [tryGroq, tryGemini, tryOpenRouter],
+    gemini:     [tryGemini, tryOpenRouter, tryGroq],
+    openrouter: [tryOpenRouter, tryGemini, tryGroq],
+  };
+
+  const chain = ORDER[provider];
+
+  for (let i = 0; i < chain.length; i++) {
+    try {
+      const result = await chain[i]();
+      // Se mudou de provider por fallback, persiste
+      const providerNames: VisionProvider[] = ["groq", "gemini", "openrouter"];
+      if (i > 0) setVisionProvider(providerNames[["groq", "gemini", "openrouter"].indexOf(
+        provider === "groq" && i === 1 ? "gemini"
+        : provider === "groq" && i === 2 ? "openrouter"
+        : provider === "gemini" && i === 1 ? "openrouter"
+        : provider === "gemini" && i === 2 ? "groq"
+        : provider === "openrouter" && i === 1 ? "gemini"
+        : "groq"
+      ) as 0 | 1 | 2]);
+      return result;
+    } catch (err) {
+      if (!(err instanceof RateLimitError) && !(err instanceof Error && err.message.startsWith("Sem chave"))) {
+        // Erro real (não rate limit, não chave faltando) — retorna erro
+        return { cards: [], tableState: null, rawResponse: "", error: (err as Error).message };
+      }
+      // Rate limit ou sem chave → tenta próximo
+    }
+  }
+
+  return { cards: [], tableState: null, rawResponse: "", error: "Todos os providers falharam ou atingiram o limite." };
 }
 
 export function formatCardForCalculator(card: GeminiDetectedCard): string {

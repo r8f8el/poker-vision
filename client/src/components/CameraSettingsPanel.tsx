@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { X, Camera, Zap, ZoomIn, Focus, Flashlight, ChevronDown } from "lucide-react";
+import { X, Camera, ZoomIn, Focus, Brain } from "lucide-react";
 import { CameraSettings, CameraDevice, ResolutionPreset } from "@/hooks/useCamera";
+import { VisionProvider } from "@/lib/visionApi";
 
 interface CameraSettingsPanelProps {
   settings: CameraSettings;
@@ -8,18 +9,46 @@ interface CameraSettingsPanelProps {
   capabilities: { zoom: { min: number; max: number; step: number } | null; torch: boolean; focus: boolean };
   onUpdate: (partial: Partial<CameraSettings>) => void;
   onClose: () => void;
+  visionProvider: VisionProvider;
+  onSwitchProvider: (p: VisionProvider) => void;
 }
 
 const RESOLUTIONS: { value: ResolutionPreset; label: string; desc: string }[] = [
-  { value: "480p",  label: "480p",  desc: "Rápido, menor qualidade" },
-  { value: "720p",  label: "720p",  desc: "Balanceado" },
-  { value: "1080p", label: "1080p", desc: "Alta qualidade (recomendado)" },
-  { value: "4k",    label: "4K",    desc: "Máxima qualidade" },
+  { value: "480p",  label: "480p",  desc: "Rápido" },
+  { value: "720p",  label: "720p",  desc: "Médio" },
+  { value: "1080p", label: "1080p", desc: "Recomendado" },
+  { value: "4k",    label: "4K",    desc: "Máximo" },
 ];
 
-export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate, onClose }: CameraSettingsPanelProps) {
-  const [localZoom, setLocalZoom] = useState(settings.zoom);
+const AI_PROVIDERS: { id: VisionProvider; name: string; model: string; desc: string; color: string }[] = [
+  {
+    id: "groq",
+    name: "Groq",
+    model: "Llama 4 Scout",
+    desc: "Ultra-rápido • 30 req/min grátis",
+    color: "orange",
+  },
+  {
+    id: "gemini",
+    name: "Google Gemini",
+    model: "Gemini 2.5 Flash",
+    desc: "Alta precisão • 15 req/min grátis",
+    color: "blue",
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    model: "Qwen 2.5 VL 72B",
+    desc: "100+ modelos • Qwen VL grátis",
+    color: "purple",
+  },
+];
 
+export function CameraSettingsPanel({
+  settings, devices, capabilities, onUpdate, onClose,
+  visionProvider, onSwitchProvider,
+}: CameraSettingsPanelProps) {
+  const [localZoom, setLocalZoom] = useState(settings.zoom);
   const zoomMin = capabilities.zoom?.min ?? 1;
   const zoomMax = Math.min(capabilities.zoom?.max ?? 4, 8);
 
@@ -38,14 +67,52 @@ export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate,
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <Camera className="w-5 h-5 text-blue-400" />
-            <span className="text-white font-bold">Configurações da Câmera</span>
+            <span className="text-white font-bold">Configurações</span>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center">
             <X className="w-4 h-4 text-slate-400" />
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-5 overflow-y-auto max-h-[70vh]">
+        <div className="px-5 py-4 space-y-5 overflow-y-auto max-h-[75vh]">
+
+          {/* ── IA de Visão ───────────────────────────────────────────────────── */}
+          <div>
+            <label className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Brain className="w-3.5 h-3.5" /> IA de Visão
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {AI_PROVIDERS.map(p => {
+                const active = visionProvider === p.id;
+                const colorMap: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+                  orange: { bg: "bg-orange-600/20", border: "border-orange-500/60", text: "text-orange-300", badge: "bg-orange-500/30 text-orange-300" },
+                  blue:   { bg: "bg-blue-600/20",   border: "border-blue-500/60",   text: "text-blue-300",   badge: "bg-blue-500/30 text-blue-300"   },
+                  purple: { bg: "bg-purple-600/20",  border: "border-purple-500/60", text: "text-purple-300", badge: "bg-purple-500/30 text-purple-300" },
+                };
+                const c = colorMap[p.color] ?? colorMap.blue;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => onSwitchProvider(p.id)}
+                    className={`relative text-left p-3 rounded-xl border transition-all
+                      ${active ? `${c.bg} ${c.border}` : "bg-slate-800 border-slate-700 hover:bg-slate-700"}`}
+                  >
+                    {active && (
+                      <span className={`absolute top-2 right-2 text-xs px-1.5 py-0.5 rounded-full font-bold ${c.badge}`}>
+                        ✓
+                      </span>
+                    )}
+                    <p className={`font-bold text-sm ${active ? c.text : "text-slate-200"}`}>{p.name}</p>
+                    <p className="text-slate-400 text-xs mt-0.5">{p.model}</p>
+                    <p className="text-slate-500 text-xs mt-1 leading-tight">{p.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-slate-500 text-xs mt-1.5">
+              💡 Se um atingir o limite, o app troca automaticamente.
+            </p>
+          </div>
 
           {/* ── Seleção de Câmera ─────────────────────────────────────────────── */}
           {devices.length > 1 && (
@@ -65,7 +132,6 @@ export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate,
                       }`}
                   >
                     <div className="font-medium">{d.label}</div>
-                    <div className="text-xs opacity-60 mt-0.5 font-mono">{d.deviceId.slice(0, 20)}...</div>
                   </button>
                 ))}
               </div>
@@ -89,7 +155,7 @@ export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate,
                     }`}
                 >
                   <div className="font-bold text-sm">{r.label}</div>
-                  <div className="text-xs opacity-60 mt-0.5 leading-tight">{r.desc}</div>
+                  <div className="text-xs opacity-60 mt-0.5">{r.desc}</div>
                 </button>
               ))}
             </div>
@@ -117,8 +183,7 @@ export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate,
                   className="w-full h-2 bg-slate-700 rounded-full appearance-none cursor-pointer accent-blue-500"
                 />
                 <div className="flex justify-between text-xs text-slate-500 mt-1">
-                  <span>{zoomMin}×</span>
-                  <span>{zoomMax}×</span>
+                  <span>{zoomMin}×</span><span>{zoomMax}×</span>
                 </div>
               </>
             ) : (
@@ -130,7 +195,7 @@ export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate,
 
           {/* ── Foco ────────────────────────────────────────────────────────────── */}
           <div>
-            <label className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+            <label className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Focus className="w-3.5 h-3.5" /> Modo de Foco
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -145,13 +210,10 @@ export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate,
                         : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
                     }`}
                 >
-                  {mode === "continuous" ? "🔄 Automático" : "👆 Toque para focar"}
+                  {mode === "continuous" ? "🔄 Automático" : "👆 Toque p/ focar"}
                 </button>
               ))}
             </div>
-            {!capabilities.focus && (
-              <p className="text-slate-500 text-xs mt-1.5">Controle de foco não suportado nesta câmera</p>
-            )}
             {capabilities.focus && settings.focusMode === "manual" && (
               <p className="text-blue-400 text-xs mt-1.5">💡 Toque na tela da câmera para focar</p>
             )}
@@ -176,13 +238,10 @@ export function CameraSettingsPanel({ settings, devices, capabilities, onUpdate,
             </div>
           )}
 
-          {/* ── Dica ────────────────────────────────────────────────────────────── */}
+          {/* Dica */}
           <div className="bg-slate-800/50 rounded-xl p-3 text-xs text-slate-400 leading-relaxed">
-            💡 <strong className="text-slate-300">Dica:</strong> Use 1080p ou 4K para melhor leitura de cartas.
-            Se a câmera ficar travada, feche e reabra o app.
-            O zoom nativo da câmera mantém qualidade melhor que o zoom digital.
+            💡 <strong className="text-slate-300">Dica:</strong> Use 1080p ou 4K com Gemini para máxima precisão na leitura de cartas.
           </div>
-
         </div>
       </div>
     </div>

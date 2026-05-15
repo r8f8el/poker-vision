@@ -35,7 +35,7 @@ const REC_STYLE: Record<string, { gradient: string; textColor: string; badge: st
 
 export default function Home() {
   const { videoRef, ready: camReady, error: camError, devices, settings: camSettings, capabilities: camCap, updateSettings: updateCamSettings, tapToFocus } = useCamera();
-  const { tableState, isScanning, isAutoMode, error: scanError, rateLimitCountdown, scanCount, lastScanTime, motionDetected, toggleAutoMode, manualScan, reset } = useAutoScan();
+  const { tableState, isScanning, isAutoMode, error: scanError, rateLimitCountdown, scanCount, lastScanTime, motionDetected, visionProvider, toggleAutoMode, manualScan, reset, switchProvider } = useAutoScan();
 
   const [showCameraSettings, setShowCameraSettings] = useState(false);
   const [holeCards, setHoleCards] = useState<string[]>(["", ""]);
@@ -271,6 +271,8 @@ export default function Home() {
             capabilities={camCap}
             onUpdate={updateCamSettings}
             onClose={() => setShowCameraSettings(false)}
+            visionProvider={visionProvider}
+            onSwitchProvider={switchProvider}
           />
         )}
 

@@ -1,8 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { analyzeTableWithVision, TableState, RateLimitError } from "@/lib/visionApi";
+import { analyzeTableWithVision, TableState, RateLimitError, setVisionProvider, getVisionProvider, VisionProvider } from "@/lib/visionApi";
 import { captureFrameAsBase64 } from "@/lib/visionApi";
 
-const VISION_API_KEY = import.meta.env.VITE_GROQ_API_KEY || "";
+const GROQ_KEY        = import.meta.env.VITE_GROQ_API_KEY        || "";
+const GEMINI_KEY      = import.meta.env.VITE_GEMINI_API_KEY      || "";
+const OPENROUTER_KEY  = import.meta.env.VITE_OPENROUTER_API_KEY  || "";
 const POLL_INTERVAL = 2000;      // verifica movimento a cada 2s (sem chamar API)
 const MIN_SCAN_GAP = 15000;      // mínimo 15s entre chamadas à API
 const MOTION_THRESHOLD = 8;      // sensibilidade de detecção de movimento (0-100)
@@ -16,9 +18,11 @@ export interface UseAutoScanResult {
   scanCount: number;
   lastScanTime: Date | null;
   motionDetected: boolean;
+  visionProvider: VisionProvider;
   toggleAutoMode: (video: HTMLVideoElement) => void;
   manualScan: (video: HTMLVideoElement) => Promise<void>;
   reset: () => void;
+  switchProvider: (p: VisionProvider) => void;
 }
 
 function hasStateChanged(prev: TableState | null, next: TableState): boolean {
@@ -73,6 +77,12 @@ export function useAutoScan(): UseAutoScanResult {
   const [scanCount, setScanCount] = useState(0);
   const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
   const [motionDetected, setMotionDetected] = useState(false);
+  const [visionProvider, setVisionProviderState] = useState<VisionProvider>(getVisionProvider);
+
+  const switchProvider = useCallback((p: VisionProvider) => {
+    setVisionProvider(p);
+    setVisionProviderState(p);
+  }, []);
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -113,10 +123,10 @@ export function useAutoScan(): UseAutoScanResult {
   const runApiScan = useCallback(async (video: HTMLVideoElement) => {
     if (isProcessingRef.current) return;
     if (Date.now() < blockedUntilRef.current) return;
-    if (!VISION_API_KEY) { setError("API Key da Groq não configurada."); return; }
+    if (!GROQ_KEY && !GEMINI_KEY) { setError("Nenhuma API Key configurada."); return; }
 
     const now = Date.now();
-    if (now - lastApiCallRef.current < MIN_SCAN_GAP) return; // respeita gap mínimo
+    if (now - lastApiCallRef.current < MIN_SCAN_GAP) return;
     lastApiCallRef.current = now;
 
     isProcessingRef.current = true;
@@ -127,7 +137,9 @@ export function useAutoScan(): UseAutoScanResult {
       const base64 = captureFrameAsBase64(video);
       if (!base64) return;
 
-      const result = await analyzeTableWithVision(base64, VISION_API_KEY);
+      const result = await analyzeTableWithVision(base64, GROQ_KEY, GEMINI_KEY, OPENROUTER_KEY);
+      // Sincroniza o provider ativo após possível auto-fallback
+      setVisionProviderState(getVisionProvider());
       if (result.error) { setError(result.error); return; }
       if (!result.tableState || result.tableState.confidence < 20) return;
 
@@ -232,6 +244,7 @@ export function useAutoScan(): UseAutoScanResult {
   return {
     tableState, isScanning, isAutoMode, error, rateLimitCountdown,
     scanCount, lastScanTime, motionDetected,
-    toggleAutoMode, manualScan, reset,
+    visionProvider,
+    toggleAutoMode, manualScan, reset, switchProvider,
   };
 }
