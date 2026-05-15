@@ -96,10 +96,9 @@ export async function analyzeTableWithVision(
   imageBase64: string,
   apiKey: string
 ): Promise<GeminiDetectionResult> {
-  const prompt = `Você é um especialista em poker online com visão computacional avançada.
-Analise esta imagem de uma mesa de poker e extraia TODAS as informações visíveis.
+  const prompt = `You are an expert poker computer vision system analyzing a screenshot of an online poker table.
 
-Retorne APENAS um objeto JSON válido com esta estrutura exata (sem markdown, sem explicações):
+Extract ALL visible information and return ONLY a valid JSON object (no markdown, no explanation):
 {
   "holeCards": ["As", "Kh"],
   "board": ["Qs", "Js", "Ts"],
@@ -115,21 +114,39 @@ Retorne APENAS um objeto JSON válido com esta estrutura exata (sem markdown, se
   "confidence": 85
 }
 
-Regras:
-- holeCards: suas 2 cartas de mão (use rank+naipe: A=ás, K=rei, Q=dama, J=valete, T=10, s=espadas, h=copas, d=ouros, c=paus)
-- board: cartas comunitárias visíveis (0-5 cartas)
-- pot: valor numérico do pote (0 se não visível)
-- toCall: quanto você precisa pagar para continuar (0 se não visível)
-- myStack: seu stack atual (0 se não visível)
-- myPosition: posição na mesa (BTN, SB, BB, UTG, MP, CO, HJ ou "unknown")
-- myTurn: true se for sua vez de agir
-- activePlayers: número de jogadores ainda na mão
-- lastActions: lista das últimas ações visíveis dos jogadores
-- street: fase atual (preflop, flop, turn, river, showdown, unknown)
-- platform: nome da plataforma se identificável
-- confidence: sua confiança na leitura (0-100)
+SUIT IDENTIFICATION RULES (critical - study the symbol carefully):
+- "s" = SPADES ♠ → BLACK suit, looks like an upside-down heart with a stem, pointed at top
+- "c" = CLUBS ♣ → BLACK suit, looks like a 3-leaf clover / trefoil shape with a stem
+- "h" = HEARTS ♥ → RED suit, looks like a heart shape, rounded top with a point at bottom
+- "d" = DIAMONDS ♦ → RED suit, looks like a rotated square / rhombus / diamond shape
+- If the suit symbol is BLACK: look carefully — spade (♠) has a pointed top, club (♣) has rounded bumps on top
+- If you are unsure between ♠ and ♣, prefer ♠ for angular/pointed shapes and ♣ for round/bumpy shapes
+- Card format: rank + suit letter. Rank: A K Q J T 9 8 7 6 5 4 3 2. Suit: s h d c
 
-Se não houver jogo de poker visível, retorne: {"confidence": 0, "holeCards": [], "board": [], "pot": 0, "toCall": 0, "myStack": 0, "myPosition": "unknown", "myTurn": false, "activePlayers": 0, "lastActions": [], "street": "unknown", "platform": "unknown"}`;
+HOLE CARDS RULES:
+- "holeCards" = the 2 private cards dealt face-up to the player (usually at bottom center of screen)
+- If NO hole cards are visible (player folded, between hands, or cards are face-down/hidden), return "holeCards": []
+- Do NOT guess or invent hole cards if you cannot clearly see them
+- If only 1 card is visible, return that 1 card only
+
+BOARD RULES:
+- "board" = community cards in the center of the table (0 to 5 cards)
+- Return only clearly visible board cards, skip face-down cards
+
+GENERAL RULES:
+- "pot": numeric chip value shown (0 if not visible)
+- "toCall": amount needed to call (0 if not visible or it's a check)  
+- "myStack": player's chip stack (0 if not visible)
+- "myPosition": BTN, SB, BB, UTG, MP, CO, HJ or "unknown"
+- "myTurn": true ONLY if there is a timer/clock or action buttons visible for the player
+- "activePlayers": players still in the hand
+- "lastActions": list of recent visible player actions as strings
+- "street": preflop, flop, turn, river, showdown, or unknown
+- "platform": PokerStars, GGPoker, 888poker, partypoker, or "unknown"
+- "confidence": your overall confidence 0-100 (be conservative — only give 80+ if you are very certain)
+
+If no poker game is visible: {"confidence": 0, "holeCards": [], "board": [], "pot": 0, "toCall": 0, "myStack": 0, "myPosition": "unknown", "myTurn": false, "activePlayers": 0, "lastActions": [], "street": "unknown", "platform": "unknown"}`;
+
 
   try {
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {

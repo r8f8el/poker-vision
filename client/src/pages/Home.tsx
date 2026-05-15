@@ -4,7 +4,7 @@ import { calculatePotOdds, compareEquityToPotOdds } from "@/lib/advancedCalculat
 import { useCamera } from "@/hooks/useCamera";
 import { useAutoScan } from "@/hooks/useAutoScan";
 import { PlayingCard, CardPicker } from "@/components/PlayingCard";
-import { Scan, RefreshCw, ChevronUp, ChevronDown, Zap, ZapOff, Radio, X, BarChart3, TrendingUp, Shield } from "lucide-react";
+import { Scan, RefreshCw, ChevronUp, ChevronDown, Zap, ZapOff, Radio, X, BarChart3, TrendingUp, Shield, RotateCcw } from "lucide-react";
 import { TableState } from "@/lib/visionApi";
 import { analyzePreflopHand, getPreflopHandTier } from "@/lib/preflopCharts";
 import { saveHand } from "@/lib/handHistory";
@@ -60,6 +60,18 @@ export default function Home() {
 
   useEffect(() => {
     if (!tableState || manualMode) return;
+
+    // Nova mão detectada: IA não vê hole cards (fold/entre mãos)
+    if (tableState.holeCards.length === 0 && tableState.confidence >= 50) {
+      // Limpa as cartas e análise, mas mantém o auto-scan rodando
+      setHoleCards(["", ""]);
+      setBoardCards(["", "", "", "", ""]);
+      setAnalysis(null);
+      setPotOddsInfo(null);
+      lastSavedRef.current = "";
+      return;
+    }
+
     setHoleCards([tableState.holeCards[0] || "", tableState.holeCards[1] || ""]);
     const b = tableState.board;
     setBoardCards([b[0] || "", b[1] || "", b[2] || "", b[3] || "", b[4] || ""]);
@@ -138,6 +150,18 @@ export default function Home() {
     setEditingSlot(null);
     setManualMode(false);
     setPanelOpen(true);
+    lastSavedRef.current = "";
+  };
+
+  // Nova mão: limpa cartas/análise mas MANTÉM auto-scan ativo
+  const handleNewHand = () => {
+    setHoleCards(["", ""]);
+    setBoardCards(["", "", "", "", ""]);
+    setAnalysis(null);
+    setPotOddsInfo(null);
+    setEditingSlot(null);
+    setManualMode(false);
+    lastSavedRef.current = "";
   };
 
   const handleToggleAuto = () => {
@@ -360,11 +384,21 @@ export default function Home() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Suas Cartas</p>
-                  {manualMode && (
-                    <button onClick={() => setManualMode(false)} className="text-xs text-blue-400 flex items-center gap-1">
-                      <X className="w-3 h-3" /> Modo manual
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {(holeCards.some(c => c.length === 2) || analysis) && (
+                      <button
+                        onClick={handleNewHand}
+                        className="flex items-center gap-1 text-xs bg-slate-700/60 hover:bg-slate-700 text-slate-300 rounded-lg px-2 py-1 transition-all active:scale-95"
+                      >
+                        <RotateCcw className="w-3 h-3" /> Nova Mão
+                      </button>
+                    )}
+                    {manualMode && (
+                      <button onClick={() => setManualMode(false)} className="text-xs text-blue-400 flex items-center gap-1">
+                        <X className="w-3 h-3" /> manual
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-3">
                   {holeCards.map((card, i) => {
