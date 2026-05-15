@@ -385,33 +385,36 @@ export async function analyzeTableWithVision(
   const tryGemini     = () => geminiKey     ? analyzeWithGemini(imageBase64, geminiKey, prompt)         : Promise.reject(new Error("Sem chave Gemini"));
   const tryOpenRouter = () => openRouterKey ? analyzeWithOpenRouter(imageBase64, openRouterKey, prompt) : Promise.reject(new Error("Sem chave OpenRouter"));
 
-  const ORDER: Record<VisionProvider, (() => Promise<GeminiDetectionResult>)[]> = {
-    groq:       [tryGroq, tryGemini, tryOpenRouter],
-    gemini:     [tryGemini, tryOpenRouter, tryGroq],
-    openrouter: [tryOpenRouter, tryGemini, tryGroq],
+  const ORDER: Record<VisionProvider, VisionProvider[]> = {
+    groq:       ["groq", "gemini", "openrouter"],
+    gemini:     ["gemini", "openrouter", "groq"],
+    openrouter: ["openrouter", "gemini", "groq"],
   };
 
   const chain = ORDER[provider];
   let lastError = "";
 
   for (let i = 0; i < chain.length; i++) {
+    const currentAttempt = chain[i];
     try {
-      const result = await chain[i]();
-      // Se mudou de provider por fallback, persiste
-      const providerNames: VisionProvider[] = ["groq", "gemini", "openrouter"];
-      if (i > 0) setVisionProvider(providerNames[["groq", "gemini", "openrouter"].indexOf(
-        provider === "groq" && i === 1 ? "gemini"
-        : provider === "groq" && i === 2 ? "openrouter"
-        : provider === "gemini" && i === 1 ? "openrouter"
-        : provider === "gemini" && i === 2 ? "groq"
-        : provider === "openrouter" && i === 1 ? "gemini"
-        : "groq"
-      ) as 0 | 1 | 2]);
-      return result;
+      let result;
+      if (currentAttempt === "groq") {
+        if (!groqKey) throw new Error("Sem chave Groq (VITE_GROQ_API_KEY)");
+        result = await analyzeWithGroq(imageBase64, groqKey, prompt);
+      } else if (currentAttempt === "gemini") {
+        if (!geminiKey) throw new Error("Sem chave Gemini (VITE_GEMINI_API_KEY)");
+        result = await analyzeWithGemini(imageBase64, geminiKey, prompt);
+      } else if (currentAttempt === "openrouter") {
+        if (!openRouterKey) throw new Error("Sem chave OpenRouter (VITE_OPENROUTER_API_KEY)");
+        result = await analyzeWithOpenRouter(imageBase64, openRouterKey, prompt);
+      }
+      
+      // Se deu certo num fallback (i > 0), muda a IA ativa no sistema
+      if (i > 0) setVisionProvider(currentAttempt);
+      return result as GeminiDetectionResult;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
-      // Fallback: se der qualquer erro (404, rate limit, sem chave, erro interno),
-      // o loop apenas continua para o próximo provider da lista.
+      console.warn(`[Vision API] Provider '${currentAttempt}' falhou: ${lastError}. Tentando próximo...`);
     }
   }
 
