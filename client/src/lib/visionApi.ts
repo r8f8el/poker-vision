@@ -174,7 +174,7 @@ function parseTableState(parsed: any): { tableState: TableState; cards: GeminiDe
 
 // ── Prompt ────────────────────────────────────────────────────────────────────
 function buildPrompt(): string {
-  return `You are an expert poker computer vision system analyzing a screenshot of an online poker table.
+  return `You are an expert poker computer vision system analyzing a screenshot of an online poker table (like SupremaPoker).
 
 Extract ALL visible information and return ONLY a valid JSON object (no markdown, no explanation):
 {
@@ -188,18 +188,16 @@ Extract ALL visible information and return ONLY a valid JSON object (no markdown
   "activePlayers": 3,
   "lastActions": ["UTG raise 120", "MP fold", "CO call 120"],
   "street": "flop",
-  "platform": "PokerStars",
+  "platform": "SupremaPoker",
   "confidence": 85,
   "playerFolded": false
 }
 
 FOLD DETECTION (most important rule for this app):
 - Look at the BOTTOM of the screen — that is the main player's position
-- If you see the word "FOLD", "FOLDED", "FOLD OUT", "SAIU" or similar text displayed at the bottom player's seat area, set "playerFolded": true
-- If you see the main player's cards are face-down, grayed out, or replaced by a "fold" animation/label, set "playerFolded": true
-- If the player's seat at the bottom shows no cards but other players still have cards (hand is still running), set "playerFolded": true
-- If the hand has ended (all cards revealed / showdown / new hand starting), set "playerFolded": false
-- If the player's cards are clearly visible face-up, set "playerFolded": false
+- If you see the word "Fold", "FOLDED", "FOLD OUT", "SAIU" displayed ON or NEAR the bottom player's avatar, set "playerFolded": true
+- If the main player's cards are GRAYED OUT, darkened, face-down, or missing, set "playerFolded": true
+- If the player's cards are clearly visible face-up in FULL COLOR, set "playerFolded": false
 - Default: "playerFolded": false
 
 SUIT IDENTIFICATION — 2-STEP RULE (critical, follow exactly):
@@ -230,16 +228,16 @@ BOARD RULES:
 - Return only clearly visible board cards, skip face-down cards
 
 GENERAL RULES:
-- "pot": numeric chip value shown (0 if not visible)
-- "toCall": amount needed to call (0 if not visible or it's a check)
-- "myStack": player's chip stack (0 if not visible)
+- "pot": numeric chip value shown (e.g., if you see "136.5 BB", pot is 136.5)
+- "toCall": amount needed to call. Look at the green call button (e.g., "Pagar 43.7 BB" means toCall is 43.7). If it's a check, 0.
+- "myStack": player's chip stack under the bottom name (e.g., "156 BB" means 156)
 - "myPosition": BTN, SB, BB, UTG, MP, CO, HJ or "unknown"
-- "myTurn": true ONLY if there is a timer/clock or action buttons visible for the player
+- "myTurn": true ONLY if large action buttons are visible at the very bottom (e.g., "Desistir", "Pagar", "Aumentar", "Fold", "Call", "Raise").
 - "activePlayers": players still in the hand
 - "lastActions": list of recent visible player actions as strings
 - "street": preflop, flop, turn, river, showdown, or unknown
-- "platform": PokerStars, GGPoker, 888poker, partypoker, or "unknown"
-- "confidence": your overall confidence 0-100 (be conservative — only give 80+ if you are very certain)
+- "platform": SupremaPoker, PokerStars, GGPoker, 888poker, partypoker, or "unknown"
+- "confidence": your overall confidence 0-100 (be conservative)
 
 If no poker game is visible: {"confidence": 0, "holeCards": [], "board": [], "pot": 0, "toCall": 0, "myStack": 0, "myPosition": "unknown", "myTurn": false, "activePlayers": 0, "lastActions": [], "street": "unknown", "platform": "unknown", "playerFolded": false}`;
 }
