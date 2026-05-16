@@ -265,7 +265,7 @@ async function analyzeWithGroq(
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: "llama-3.2-11b-vision-preview",
+      model: "llama-3.2-90b-vision-instruct",
       response_format: { type: "json_object" },
       messages: [{
         role: "user",
@@ -346,7 +346,7 @@ async function analyzeWithOpenRouter(
       "X-Title": "PokerVision",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.0-flash-lite-preview-02-05:free",
+      model: "qwen/qwen2.5-vl-72b-instruct:free",
       messages: [{
         role: "user",
         content: [
