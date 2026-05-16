@@ -200,28 +200,18 @@ FOLD DETECTION (most important rule for this app):
 - If the player's cards are clearly visible face-up in FULL COLOR, set "playerFolded": false
 - Default: "playerFolded": false
 
-SUIT IDENTIFICATION — 2-STEP RULE (critical, follow exactly):
-
-STEP 1 — DETERMINE THE COLOR of the suit symbol:
-  → If the suit symbol is RED (any shade of red/pink/orange): it can ONLY be "h" (hearts ♥) or "d" (diamonds ♦)
-  → If the suit symbol is BLACK (dark/black/gray): it can ONLY be "s" (spades ♠) or "c" (clubs ♣)
-  → A red card NEVER has spades or clubs. A black card NEVER has hearts or diamonds.
-
-STEP 2 — DETERMINE WHICH SUIT within that color:
-  RED suits:
-    - "h" = HEARTS ♥ → heart shape: two bumps on top, point at bottom (like a valentine heart)
-    - "d" = DIAMONDS ♦ → diamond/rhombus shape: rotated square, 4 equal sides, pointed top and bottom
-  BLACK suits:
-    - "s" = SPADES ♠ → pointed top (like an upside-down heart with a long stem below)
-    - "c" = CLUBS ♣ → three round bubbles/circles on top (like a 3-leaf clover with a short stem)
-
-EXAMPLES:
-  - Red heart shape → "h" (hearts)
-  - Red diamond shape → "d" (diamonds)
-  - Black pointed shape → "s" (spades)
-  - Black clover/round shape → "c" (clubs)
-  - Card rank format: rank + suit. Example: Ace of hearts = "Ah", King of spades = "Ks"
-  - IMPORTANT: The number "10" on a card must be returned as "T" (10♥ → "Th", 10♠ → "Ts", etc.)
+SUIT IDENTIFICATION (CRITICAL, supports 2-color and 4-color decks):
+- Look at the COLOR and SHAPE of the suit symbol on the card:
+  * GREEN symbol = ALWAYS Clubs ("c")
+  * BLUE symbol = ALWAYS Diamonds ("d")
+  * RED symbol = Hearts ("h") or Diamonds ("d"). If red, shape: heart ♥ vs rhombus ♦.
+  * BLACK/DARK symbol = Spades ("s") or Clubs ("c"). If black, shape: pointed top ♠ vs 3-bubbles ♣.
+- Shape descriptions:
+  * "h" = HEARTS ♥ (heart shape: two bumps on top, point at bottom)
+  * "d" = DIAMONDS ♦ (rhombus shape: 4 equal sides, pointed top/bottom)
+  * "s" = SPADES ♠ (pointed top, upside-down heart with stem)
+  * "c" = CLUBS ♣ (three round bubbles on top, clover shape)
+- Card rank format: rank + suit (e.g., "Ah", "Ks"). 10 must be "T" (e.g., 10♥ → "Th").
 
 BOARD RULES:
 - "board" = community cards in the center of the table (0 to 5 cards)
@@ -229,7 +219,7 @@ BOARD RULES:
 
 GENERAL RULES:
 - "pot": numeric chip value shown (e.g., if you see "136.5 BB", pot is 136.5)
-- "toCall": amount needed to call. Look at the green call button (e.g., "Pagar 43.7 BB" means toCall is 43.7). If it's a check, 0.
+- "toCall": amount needed to call. VERY IMPORTANT: If the action button says "Mesa", "Check", or "Passar", then "toCall" MUST be 0 (you already paid the BB and no one raised). ONLY set "toCall" > 0 if you see a button explicitly saying "Pagar X", "Call X" (then toCall is X).
 - "myStack": player's chip stack under the bottom name (e.g., "156 BB" means 156)
 - "myPosition": BTN, SB, BB, UTG, MP, CO, HJ or "unknown"
 - "myTurn": true ONLY if large action buttons are visible at the very bottom (e.g., "Desistir", "Pagar", "Aumentar", "Fold", "Call", "Raise").
